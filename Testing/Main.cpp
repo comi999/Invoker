@@ -8,18 +8,11 @@
 //==========================================================================
 using namespace std;
 
-//==========================================================================
-//
-//==========================================================================
-template < typename Return = void, typename... Args >
-class Invoker
-{
-	#pragma region Helpers
-public:
-	//==========================================================================
-	// Function information.
-	//==========================================================================
+template < typename, typename... >
+class Invoker;
 
+namespace FunctionTraits
+{
 	template < typename T >
 	struct FunctionInfo;
 
@@ -29,37 +22,71 @@ public:
 		using Signature = R( A... );
 		using Return = R;
 		using Arguments = tuple< A... >;
+		static constexpr bool IsStatic = true;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = false;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
 	};
 
 	template < typename O, typename R, typename... A >
 	struct FunctionInfo< R( O::* )( A... ) >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = false;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = true;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename O, typename R, typename... A >
 	struct FunctionInfo< R( O::* )( A... ) const >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = false;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = true;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename O, typename R, typename... A >
 	struct FunctionInfo< R( O::* )( A... ) volatile >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = false;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = true;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename O, typename R, typename... A >
 	struct FunctionInfo< R( O::* )( A... ) const volatile >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = false;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = true;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename R, typename... A >
 	struct FunctionInfo< R( * )( A... ) >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = true;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = false;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename R, typename... A >
 	struct FunctionInfo< R( & )( A... ) >
-		 : FunctionInfo< R( A... ) >
-	{ };
+		: FunctionInfo< R( A... ) >
+	{
+		static constexpr bool IsStatic = true;
+		static constexpr bool IsLambda = false;
+		static constexpr bool IsMember = false;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
+	};
 
 	template < typename T >
 	struct FunctionInfo
@@ -67,6 +94,10 @@ public:
 		using Signature = typename FunctionInfo< decltype( &remove_reference< T >::type::operator() ) >::Signature;
 		using Return = typename FunctionInfo< Signature >::Return;
 		using Arguments = typename FunctionInfo< Signature >::Arguments;
+		static constexpr bool IsStatic = false;
+		static constexpr bool IsLambda = true;
+		static constexpr bool IsMember = false;
+		static constexpr bool IsFunction = IsStatic || IsLambda || IsMember;
 	};
 
 	template < typename T >
@@ -81,44 +112,49 @@ public:
 	template < typename R, typename... A >
 	struct ConvertToInvokerImpl
 	{
-		using Type = Invoker< R, A... >;
+		using Type = typename Invoker< R, A... >;
 	};
 
 	template < typename R, typename... A >
 	struct ConvertToInvokerImpl< R, tuple< A... > >
 	{
-		using Type = Invoker< R, A... >;
+		using Type = typename Invoker< R, A... >;
 	};
 
 	template < typename T >
-	using ConvertToInvoker = typename ConvertToInvokerImpl< GetReturn< T >, GetArguments< T > >::Type;
-
-	template < typename Lambda, typename F = typename decltype( &remove_reference< Lambda >::type::operator() ) >
-	static constexpr bool IsLambdaF = false;
-
-	template < typename Lambda, typename F >
-	static constexpr bool IsLambdaF< Lambda, typename decltype( &remove_reference< Lambda >::type::operator() ) > = true;
-
-	template < typename Static >
-	static constexpr bool IsStaticF = false;
-
-	template <>
-	static constexpr bool IsStaticF< Return( Args... ) > = true;
+	using ConvertToInvoker = ConvertToInvokerImpl< GetReturn< T >, GetArguments< T > >;
 
 	template < typename T >
-	using EnableIfLambdaF = enable_if_t< IsLambdaF< T >, void >;
+	using EnableIfLambdaF = enable_if_t< FunctionInfo< T >::IsLambda, void >;
 
 	template < typename T >
-	using DisableIfLambdaF = enable_if_t< !IsLambdaF< T >, void >;
+	using DisableIfLambdaF = enable_if_t< !FunctionInfo< T >::IsLambda, void >;
 
 	template < typename T >
-	using EnableIfStaticF = enable_if_t< IsStaticF< T >, void >;
+	using EnableIfStaticF = enable_if_t< FunctionInfo< T >::IsStatic, void >;
 
 	template < typename T >
-	using DisableIfStaticF = enable_if_t< !IsStaticF< T >, void >;
+	using DisableIfStaticF = enable_if_t< !FunctionInfo< T >::IsStatic, void >;
 
-	#pragma endregion
+	template < typename T >
+	using EnableIfMemberF = enable_if_t< FunctionInfo< T >::IsMember, void >;
 
+	template < typename T >
+	using DisableIfMemberF = enable_if_t< !FunctionInfo< T >::IsMember, void >;
+
+	template < typename T >
+	using EnableIfFunction = enable_if_t< FunctionInfo< T >::IsFunction, void >;
+
+	template < typename T >
+	using DisableIfFunction = enable_if_t< !FunctionInfo< T >::IsFunction, void >;
+}
+
+//==========================================================================
+//
+//==========================================================================
+template < typename Return = void, typename... Args >
+class Invoker
+{
 public:
 
 	template < typename Object >
@@ -126,7 +162,7 @@ public:
 	using StaticFunction     = Return( * )( Args... );
 	using InvocationFunction = Return( * )( void*, void*, Args&... );
 	using Signature          = Return( Args... );
-	private:
+
 	/// <summary>
 	/// 
 	/// </summary>
@@ -139,7 +175,7 @@ public:
 	/// <summary>
 	/// 
 	/// </summary>
-	template < typename Lambda, typename = EnableIfLambdaF< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	Invoker( Lambda a_Lambda )
 		: m_Object( reinterpret_cast< void* >( &a_Lambda ) )
 		, m_Function( nullptr )
@@ -214,7 +250,7 @@ public:
 	/// <summary>
 	/// 
 	/// </summary>
-	template < typename Lambda, typename = EnableIfLambdaF< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	inline bool operator==( Lambda a_Lambda ) const
 	{
 		return m_Invocation == FunctorLambda< Lambda >;
@@ -223,7 +259,7 @@ public:
 	/// <summary>
 	/// 
 	/// </summary>
-	template < typename Object, typename = DisableIfLambdaF< Object > >
+	template < typename Object, typename = FunctionTraits::DisableIfLambdaF< Object > >
 	inline bool operator==( const Object& a_Object ) const
 	{
 		return m_Object == &a_Object;
@@ -232,7 +268,7 @@ public:
 	/// <summary>
 	/// 
 	/// </summary>
-	template < typename Object, typename = DisableIfLambdaF< Object > >
+	template < typename Object, typename = FunctionTraits::DisableIfLambdaF< Object > >
 	inline bool operator==( const Object* a_Object ) const
 	{
 		return m_Object == a_Object;
@@ -266,7 +302,7 @@ public:
 	/// <summary>
 	/// 
 	/// </summary>
-	template < typename Lambda, typename = EnableIfLambdaF< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	inline void operator=( Lambda a_Lambda )
 	{
 		m_Object = reinterpret_cast< void* >( &a_Lambda );
@@ -362,42 +398,25 @@ private:
 
 };
 
-struct a
-{
-	void fun( int );
-};
-auto l = [](int){ };
-void foo(int);
-using f = decltype( l );
-
-static constexpr bool valA = Invoker< void, int >::IsStaticF< f >;
-static constexpr bool valB = Invoker< void, int >::IsLambdaF< f >;
-/*
 //==========================================================================
 template < typename T >
 auto MakeInvoker( T a_Function )
 {
-	return Invoker<>::get_invoker< 
-		   Invoker<>::get_return< T >, 
-		   Invoker<>::get_arguments< T > >::Inv( a_Function );
+	return FunctionTraits::ConvertToInvoker< T >::Type( a_Function );
 }
 
 //==========================================================================
 template < typename T, typename U >
 auto MakeInvoker( T* a_Object, U a_Member )
 {
-	return Invoker<>::get_invoker< typename 
-		   Invoker<>::get_return< U >, typename 
-		   Invoker<>::get_arguments< U > >::Inv( a_Object, a_Member );
+	return FunctionTraits::ConvertToInvoker< U >::Type( a_Object, a_Member );
 }
 
 //==========================================================================
 template < typename T, typename U >
 auto MakeInvoker( T& a_Object, U a_Member )
 {
-	return Invoker<>::get_invoker< typename
-		   Invoker<>::get_return< U >, typename
-		   Invoker<>::get_arguments< U > >::Inv( a_Object, a_Member );
+	return FunctionTraits::ConvertToInvoker< U >::Type( a_Object, a_Member );
 }
 
 typedef void* DelegateHandle;
@@ -507,7 +526,7 @@ public:
 		m_Invokers.insert( m_Invokers.end(), a_Delegate.begin(), a_Delegate.end() );
 	}
 
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	inline DelegateHandle Add( Lambda a_Lambda )
 	{
 		m_Invokers.emplace_back( a_Lambda );
@@ -544,7 +563,7 @@ public:
 		m_Invokers.insert( a_Where, a_Delegate.begin(), a_Delegate.end() );
 	}
 
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	inline DelegateHandle Insert( const const_iterator& a_Where, Lambda a_Lambda )
 	{
 		return reinterpret_cast< DelegateHandle >( &*m_Invokers.emplace( a_Where, a_Lambda ) );
@@ -581,7 +600,7 @@ public:
 		m_Invokers.insert( Iterator, a_Delegate.begin(), a_Delegate.end() );
 	}
 
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	DelegateHandle Insert( size_t a_Index, Lambda a_Lambda )
 	{
 		auto Iterator = m_Invokers.begin();
@@ -747,7 +766,7 @@ public:
 		return true;
 	}
 
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	bool RemoveAll( Lambda a_Lambda )
 	{
 		return false;
@@ -780,7 +799,7 @@ public:
 
 	}
 	
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	void operator+=( Lambda a_Lambda )
 	{
 
@@ -811,7 +830,7 @@ public:
 
 	}
 	
-	template < typename Lambda, typename = typename InvokerType::template enable_if_lambda< Lambda > >
+	template < typename Lambda, typename = FunctionTraits::EnableIfLambdaF< Lambda > >
 	void operator-= ( Lambda a_Lambda )
 	{
 
@@ -882,6 +901,11 @@ double func( int b )
 	return b * 10.0;
 }
 
+int otherfunc()
+{
+	return 0;
+}
+
 int main()
 {
 	A a;
@@ -891,11 +915,8 @@ int main()
 	auto lambda1 = [=]( int b ) { return true; };
 	auto invoker0 = MakeInvoker( func );
 	auto invoker1 = MakeInvoker( lambda1 );
-	bool test = invoker0 == func;
-
-	invoker1 = MakeInvoker( lambda );
-	auto invoker2 = MakeInvoker( lambda );
-	auto invoker3 = MakeInvoker( func );
+	auto invoker2 = MakeInvoker( a, &A::foo1 );
+	bool test = invoker0 == otherfunc;
 
 	Delegate< bool, int > del1;
 	del1 += invoker1;
